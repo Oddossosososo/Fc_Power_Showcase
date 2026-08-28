@@ -1,0 +1,91 @@
+import * as THREE from 'three';
+
+export type Difficulty='Beginner'|'Amateur'|'Semi-Pro'|'Professional'|'World Class'|'Legendary';
+export type FormationName='4-3-3'|'4-4-2'|'4-2-3-1'|'3-5-2'|'5-3-2';
+
+type Player={team:number;number:number;name:string;pos:THREE.Vector3;vel:THREE.Vector3;mesh:THREE.Group;controlled?:boolean};
+
+export class FootballGame {
+ private scene=new THREE.Scene();
+ private camera=new THREE.PerspectiveCamera(52,1,.1,100);
+ private renderer:THREE.WebGLRenderer;
+ private ball:THREE.Mesh;
+ private ballVel=new THREE.Vector3();
+ private players:Player[]=[];
+ private controlled!:Player;
+ private keys=new Set<string>();
+ private raf=0; private last=performance.now(); private elapsed=0;
+ private score=[0,0]; private listeners=new Set<(s:any)=>void>();
+ private ro:ResizeObserver;
+ private shotCooldown=0; private switchCooldown=0;
+
+ constructor(private host:HTMLElement,private difficulty:Difficulty='Amateur',private formation:FormationName='4-3-3'){
+  this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+  this.renderer.shadowMap.enabled=true;
+  host.innerHTML=''; host.style.position='relative'; host.appendChild(this.renderer.domElement);
+  this.buildWorld(); this.createTeams(); this.resetKickoff();
+  this.ro=new ResizeObserver(()=>this.resize()); this.ro.observe(host); this.resize();
+  addEventListener('keydown',this.keyDown); addEventListener('keyup',this.keyUp);
+  this.raf=requestAnimationFrame(this.loop);
+ }
+ onState(fn:(s:any)=>void){this.listeners.add(fn);fn(this.state());return()=>this.listeners.delete(fn)}
+ private emit(){const s=this.state();this.listeners.forEach(fn=>fn(s))}
+ private state(){const m=Math.floor(this.elapsed);return{score:[...this.score],time:`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`,half:1,event:'LIVE MATCH',player:this.controlled?.name??'',stamina:100,poss:[50,50],shots:[0,0],shotsOn:[0,0],passes:[0,0],completed:[0,0]}}
+
+ private buildWorld(){
+  this.scene.background=new THREE.Color(0x08130f);
+  this.scene.add(new THREE.HemisphereLight(0xeafff2,0x142019,2.2));
+  const sun=new THREE.DirectionalLight(0xffffff,3);sun.position.set(-4,12,6);sun.castShadow=true;this.scene.add(sun);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(12,7.8),new THREE.MeshStandardMaterial({color:0x17663f,roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;this.scene.add(ground);
+  const lineMat=new THREE.LineBasicMaterial({color:0xffffff});
+  const line=(pts:number[][])=>{const g=new THREE.BufferGeometry().setFromPoints(pts.map(p=>new THREE.Vector3(p[0],.012,p[1])));this.scene.add(new THREE.Line(g,lineMat));};
+  line([[-6,-3.9],[6,-3.9],[6,3.9],[-6,3.9],[-6,-3.9]]);line([[0,-3.9],[0,3.9]]);
+  const circle=new THREE.EllipseCurve(0,0,.9,.9,0,Math.PI*2);line(circle.getPoints(64).map(p=>[p.x,p.y]));
+  line([[-6,-1.8],[-4.4,-1.8],[-4.4,1.8],[-6,1.8],[-6,-1.8]]);line([[6,-1.8],[4.4,-1.8],[4.4,1.8],[6,1.8],[6,-1.8]]);
+  for(const x of[-6,6]){for(const z of[-1.8,1.8]){const post=new THREE.Mesh(new THREE.CylinderGeometry(.055,.055,2.2,10),new THREE.MeshStandardMaterial({color:0xffffff}));post.position.set(x,1.1,z);this.scene.add(post)}const cross=new THREE.Mesh(new THREE.BoxGeometry(.08,2.2,.08),new THREE.MeshStandardMaterial({color:0xffffff}));cross.rotation.z=Math.PI/2;cross.position.set(x,2.2,0);this.scene.add(cross)}
+  this.ball=new THREE.Mesh(new THREE.SphereGeometry(.14,18,12),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35}));this.ball.castShadow=true;this.scene.add(this.ball);
+  this.camera.position.set(0,7.8,7.8);this.camera.lookAt(0,0,0);
+ }
+ private createTeams(){
+  for(let team=0;team<2;team++){
+   this.players.push(this.makePlayer(team,0,team?'RED GK':'BLUE GK'));
+   const slots=[[-4.7,0],[-3.5,-2.6],[-3.5,2.6],[-2,-1.7],[-2,1.7],[-.5,-2.8],[-.5,0],[-.5,2.8],[1.7,-2.2],[2.3,0],[1.7,2.2]];
+   for(let n=1;n<11;n++){const s=slots[n-1];this.players.push(this.makePlayer(team,n,`${team?'RED':'BLUE'} ${n+1}`,s))}
+  }
+  this.controlled=this.players.find(p=>p.team===0&&p.number===9)!;this.controlled.controlled=true;
+ }
+ private makePlayer(team:number,number:number,name:string,slot?:number[]){
+  const g=new THREE.Group();const shirt=new THREE.MeshStandardMaterial({color:team?0xd9344d:0x278cff});const skin=new THREE.MeshStandardMaterial({color:0xc98a6d});
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.12,.27,5,8),shirt);body.position.y=.38;g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),skin);head.position.y=.69;g.add(head);
+  for(const x of[-.06,.06]){const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.035,.27,4,6),shirt);leg.position.set(x,.1,0);g.add(leg)}
+  g.traverse(o=>{if(o instanceof THREE.Mesh)o.castShadow=true});this.scene.add(g);
+  return{team,number,name,pos:new THREE.Vector3(slot?((team?1:-1)*slot[0]):(team?5.35:-5.35),0,slot?slot[1]:0),vel:new THREE.Vector3(),mesh:g};
+ }
+ private resetKickoff(){this.ball.position.set(0,.16,0);this.ballVel.set(0,0,0);for(const p of this.players){p.mesh.position.copy(p.pos);p.vel.set(0,0,0)}const k=this.players.find(p=>p.team===0&&p.number===9)!;this.players.forEach(p=>p.controlled=false);k.controlled=true;this.controlled=k}
+ private keyDown=(e:KeyboardEvent)=>{const k=e.key.toLowerCase();if([' ','j','k','l','i','o','p'].includes(k))e.preventDefault();this.keys.add(k)};
+ private keyUp=(e:KeyboardEvent)=>this.keys.delete(e.key.toLowerCase());
+ private loop=(now:number)=>{const dt=Math.min((now-this.last)/1000,.033);this.last=now;this.update(dt);this.renderer.render(this.scene,this.camera);this.raf=requestAnimationFrame(this.loop)};
+ private update(dt:number){
+  this.elapsed+=dt;this.shotCooldown=Math.max(0,this.shotCooldown-dt);this.switchCooldown=Math.max(0,this.switchCooldown-dt);
+  const p=this.controlled;let x=(this.keys.has('d')?1:0)-(this.keys.has('a')?1:0),z=(this.keys.has('s')?1:0)-(this.keys.has('w')?1:0);const dir=new THREE.Vector3(x,0,z);if(dir.lengthSq())dir.normalize();
+  const speed=this.keys.has('shift')?3.3:2.2;p.vel.lerp(dir.multiplyScalar(speed),1-Math.exp(-11*dt));p.pos.addScaledVector(p.vel,dt);p.pos.x=THREE.MathUtils.clamp(p.pos.x,-5.7,5.7);p.pos.z=THREE.MathUtils.clamp(p.pos.z,-3.6,3.6);p.mesh.position.copy(p.pos);
+  if(p.pos.distanceTo(this.ball.position)<.55&&this.ballVel.length()<1.1){this.ball.position.copy(p.pos).setY(.16);this.ballVel.set(0,0,0)}
+  if(this.keys.has(' ')&&this.switchCooldown<=0){this.switchCooldown=.3;this.switchPlayer()}
+  if(this.keys.has('j')&&this.shotCooldown<=0)this.kick(4.5);
+  if(this.keys.has('k')&&this.shotCooldown<=0)this.kick(5.8);
+  if(this.keys.has('l')&&this.shotCooldown<=0)this.shoot();
+  if(this.keys.has('p')&&this.shotCooldown<=0)this.shoot(true);
+  this.updateAI(dt);this.updateBall(dt);this.emit();
+ }
+ private switchPlayer(){const candidates=this.players.filter(p=>p.team===0);candidates.forEach(p=>p.controlled=false);this.controlled=candidates.sort((a,b)=>a.pos.distanceTo(this.ball.position)-b.pos.distanceTo(this.ball.position))[0];this.controlled.controlled=true}
+ private kick(power:number){if(this.controlled.pos.distanceTo(this.ball.position)>.65)return;this.shotCooldown=.25;const dir=this.controlled.vel.lengthSq()?this.controlled.vel.clone().normalize():new THREE.Vector3(this.controlled.team? -1:1,0,0);this.ballVel.copy(dir).multiplyScalar(power);this.ballVel.y=.1;this.ball.position.copy(this.controlled.pos).setY(.16)}
+ private shoot(chip=false){if(this.controlled.pos.distanceTo(this.ball.position)>.75)return;this.shotCooldown=.45;const goal=new THREE.Vector3(this.controlled.team? -6:6,.16,(Math.random()-.5)*2.8);const d=goal.sub(this.controlled.pos);d.y=0;d.normalize();this.ball.position.copy(this.controlled.pos).setY(.16);this.ballVel.copy(d).multiplyScalar(6.2);this.ballVel.y=chip?2.7:.7}
+ private updateAI(dt:number){for(const p of this.players){if(p===this.controlled)continue;let target=p.pos.clone();const side=p.team?1:-1;const nearest=this.players.filter(q=>q.team===p.team).sort((a,b)=>a.pos.distanceTo(this.ball.position)-b.pos.distanceTo(this.ball.position))[0];if(nearest===p)target.copy(this.ball.position);else{target.x=side*(p.number===0?5.25:(p.number<5?3.8:p.number<8?1:.9));target.z+=(this.ball.position.z-target.z)*.08}const d=target.sub(p.pos);if(d.length()>.15){d.normalize();p.vel.lerp(d.multiplyScalar(1.2),1-Math.exp(-4*dt));p.pos.addScaledVector(p.vel,dt)}p.pos.x=THREE.MathUtils.clamp(p.pos.x,-5.7,5.7);p.pos.z=THREE.MathUtils.clamp(p.pos.z,-3.6,3.6);p.mesh.position.copy(p.pos)}}
+ private updateBall(dt:number){if(this.ballVel.lengthSq()===0)return;this.ball.position.addScaledVector(this.ballVel,dt);this.ballVel.multiplyScalar(Math.pow(.985,dt*60));this.ballVel.y-=7*dt;this.ball.position.y+=this.ballVel.y*dt;if(this.ball.position.y<.14){this.ball.position.y=.14;this.ballVel.y*=-.35;if(Math.abs(this.ballVel.y)<.15)this.ballVel.y=0}
+  if(this.ball.position.z>3.85||this.ball.position.z<-3.85){this.ball.position.z=THREE.MathUtils.clamp(this.ball.position.z,-3.85,3.85);this.ballVel.z*=-.8}
+  if(this.ball.position.x>6.1||this.ball.position.x<-6.1){const goal=Math.abs(this.ball.position.z)<1.8;if(goal){if(this.ball.position.x>6.1)this.score[0]++;else this.score[1]++;this.ballVel.set(0,0,0);this.resetKickoff();}else{this.ball.position.x=THREE.MathUtils.clamp(this.ball.position.x,-6,6);this.ballVel.x*=-.8}}this.ball.rotation.x+=this.ballVel.z*dt*3;this.ball.rotation.z-=this.ballVel.x*dt*3}
+ private resize(){const w=this.host.clientWidth,h=this.host.clientHeight;if(!w||!h)return;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h,false)}
+ destroy(){cancelAnimationFrame(this.raf);this.ro.disconnect();removeEventListener('keydown',this.keyDown);removeEventListener('keyup',this.keyUp);this.renderer.dispose();this.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}});this.renderer.domElement.remove()}
+}
