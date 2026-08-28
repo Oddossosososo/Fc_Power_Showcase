@@ -1,0 +1,10 @@
+export const LANGUAGES = {
+  en: { name:'English', showcase:'POWER SHOWCASE', players:'PLAYERS', teams:'TEAMS', test:'TESTMENU_1.0', live:'LIVE', subtitle:'Signature performances driven by player power.', all:'All Players', selected:'Selected Player', apply:'APPLY POWER', ovr:'OVR', performance:'PERFORMANCE' },
+  es: { name:'Español', showcase:'EXHIBICIÓN DE PODER', players:'JUGADORES', teams:'EQUIPOS', test:'TESTMENU_1.0', live:'EN VIVO', subtitle:'Actuaciones impulsadas por el poder del jugador.', all:'Todos', selected:'Jugador seleccionado', apply:'APLICAR PODER', ovr:'GRL', performance:'RENDIMIENTO' },
+  fr: { name:'Français', showcase:'VITRINE DE PUISSANCE', players:'JOUEURS', teams:'ÉQUIPES', test:'TESTMENU_1.0', live:'EN DIRECT', subtitle:'Performances emblématiques pilotées par la puissance.', all:'Tous', selected:'Joueur sélectionné', apply:'APPLIQUER', ovr:'GEN', performance:'PERFORMANCE' },
+  de: { name:'Deutsch', showcase:'POWER-SHOWCASE', players:'SPIELER', teams:'TEAMS', test:'TESTMENU_1.0', live:'LIVE', subtitle:'Signature-Moves, angetrieben von Spieler-Power.', all:'Alle Spieler', selected:'Ausgewählter Spieler', apply:'POWER ANWENDEN', ovr:'GES', performance:'LEISTUNG' },
+  pt: { name:'Português', showcase:'SHOWCASE DE PODER', players:'JOGADORES', teams:'EQUIPES', test:'TESTMENU_1.0', live:'AO VIVO', subtitle:'Performances de assinatura movidas pelo poder.', all:'Todos', selected:'Jogador selecionado', apply:'APLICAR PODER', ovr:'GER', performance:'DESEMPENHO' },
+  ja: { name:'日本語', showcase:'パワーショーケース', players:'選手', teams:'チーム', test:'TESTMENU_1.0', live:'ライブ', subtitle:'選手パワーで進化するシグネチャーパフォーマンス。', all:'全選手', selected:'選択した選手', apply:'パワーを適用', ovr:'OVR', performance:'パフォーマンス' },
+  ko: { name:'한국어', showcase:'파워 쇼케이스', players:'선수', teams:'팀', test:'TESTMENU_1.0', live:'LIVE', subtitle:'선수 파워에 따라 변화하는 시그니처 퍼포먼스.', all:'모든 선수', selected:'선택한 선수', apply:'파워 적용', ovr:'OVR', performance:'퍼포먼스' },
+} as const;
+export type Language = keyof typeof LANGUAGES;
