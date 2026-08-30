@@ -23,11 +23,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (automatic LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 26
-          cache: npm
+          node-version: 'lts/*'
 
       - name: Install dependencies
         run: npm install
