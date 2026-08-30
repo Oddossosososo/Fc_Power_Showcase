@@ -6,7 +6,8 @@
   "engines": { "node": ">=24 <27" },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "generate:player": "node scripts/generate-player-glb.mjs",
+    "build": "npm run generate:player && tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
