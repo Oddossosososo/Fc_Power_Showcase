@@ -21,7 +21,6 @@ const mesh = (name, geometry, material, parent, position, scale = [1, 1, 1]) => 
   return m;
 };
 
-// Stylised, original footballer: deliberately not based on a real player or game asset.
 const torso = mesh('Jersey', new THREE.CapsuleGeometry(1.15, 2.25, 8, 14), jersey, root, [0, 3.35, 0], [1, 1, 0.82]);
 mesh('Shorts', new THREE.BoxGeometry(2.0, 0.95, 1.55), jersey, root, [0, 1.75, 0]);
 mesh('Head', new THREE.SphereGeometry(1.0, 20, 14), skin, root, [0, 6.25, 0]);
@@ -43,13 +42,8 @@ const rightLeg = new THREE.Group(); rightLeg.name = 'RightLeg'; rightLeg.positio
 mesh('RightSock', new THREE.CapsuleGeometry(0.36, 1.65, 7, 10), white, rightLeg, [0, -0.9, 0]);
 mesh('RightBoot', new THREE.BoxGeometry(0.72, 0.38, 1.5), dark, rightLeg, [0, -1.95, 0.25]);
 
-// Keep the asset compact and game-friendly.
-root.scale.setScalar(0.92);
-root.updateMatrixWorld(true);
-
-const idleTimes = [0, 0.7, 1.4];
 const idle = new THREE.AnimationClip('Idle', 1.4, [
-  new THREE.NumberKeyframeTrack('Player.scale', idleTimes, [0.92, 0.925, 0.92, 0.92, 0.925, 0.92]),
+  new THREE.VectorKeyframeTrack('Player.scale', [0, 0.7, 1.4], [0.92,0.92,0.92, 0.925,0.925,0.925, 0.92,0.92,0.92]),
 ]);
 
 const runTimes = [0, 0.2, 0.4, 0.6, 0.8];
@@ -62,17 +56,10 @@ const run = new THREE.AnimationClip('Run', 0.8, [
 
 const scene = new THREE.Scene();
 scene.add(root);
-
 await mkdir('public/models', { recursive: true });
 const exporter = new GLTFExporter();
 const arrayBuffer = await new Promise((resolve, reject) => {
-  exporter.parse(scene, result => resolve(result), error => reject(error), {
-    binary: true,
-    animations: [idle, run],
-    trs: true,
-    onlyVisible: true,
-  });
+  exporter.parse(scene, result => resolve(result), error => reject(error), { binary: true, animations: [idle, run], trs: true, onlyVisible: true });
 });
-
 await writeFile(out, Buffer.from(arrayBuffer));
 console.log(`Generated ${out} (${Buffer.byteLength(arrayBuffer)} bytes)`);
