@@ -26,6 +26,7 @@ export class FootballGame{
  private controlled!:Player;
  private keys=new Set<string>();
  private raf=0;private last=performance.now();private match=0;private half=1;
+ private destroyed=false;private timers=new Set<number>();
  private score=[0,0];private event='KICK OFF';private kickoffPause=1.2;private switchCooldown=0;private goalPause=0;
  private listeners=new Set<(s:any)=>void>();private resizeObserver!:ResizeObserver;
  private formation:FormationName;private difficulty:Difficulty;private difficultyLevel=1;
@@ -41,7 +42,7 @@ export class FootballGame{
   host.innerHTML='';host.style.position='relative';host.style.overflow='hidden';host.appendChild(this.renderer.domElement);
   this.flash=document.createElement('div');Object.assign(this.flash.style,{position:'absolute',inset:'0',pointerEvents:'none',opacity:'0',zIndex:'10',background:'radial-gradient(circle,rgba(255,255,255,.95),transparent 65%)',transition:'opacity .1s'});host.appendChild(this.flash);
   this.buildWorld();
-  FootballGame.loadPlayer(`${import.meta.env.BASE_URL}models/player.glb`).catch(()=>{}).finally(()=>this.start());
+  FootballGame.loadPlayer(`${import.meta.env.BASE_URL}models/player.glb`).catch(()=>{}).finally(()=>{if(!this.destroyed)this.start()});
  }
 
  private static loadPlayer(url:string){
@@ -66,7 +67,7 @@ export class FootballGame{
  private makeGoals(){for(const x of[-FIELD_X,FIELD_X]){const mat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.4});for(const z of[-7.32,7.32]){const p=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,5.5,10),mat);p.position.set(x,2.75,z);p.castShadow=true;this.scene.add(p)}const bar=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,14.64,10),mat);bar.rotation.x=Math.PI/2;bar.position.set(x,5.5,0);this.scene.add(bar);const net=new THREE.Mesh(new THREE.BoxGeometry(5.5,5,14.5),new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.16}));net.position.set(x+(x>0?2.75:-2.75),2.5,0);this.scene.add(net)}}
  private makeCrowd(){const mat=new THREE.MeshStandardMaterial({color:0x252b35,roughness:.9});for(const z of[-45,45]){const stand=new THREE.Mesh(new THREE.BoxGeometry(130,8,16),mat);stand.position.set(0,4,z);this.scene.add(stand);for(let i=0;i<90;i++){const fan=new THREE.Mesh(new THREE.SphereGeometry(.45,6,5),new THREE.MeshBasicMaterial({color:[0xffffff,0x4da3ff,0xffd34e][i%3]}));fan.position.set(-49+(i%30)*3.4,8+(Math.floor(i/30)%2)*1.3,z+(z>0?-5:5));this.scene.add(fan)}}}
 
- private start(){this.spawnTeams();this.resetKickoff(0);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(this.host);this.resize();window.addEventListener('keydown',this.keyDown);window.addEventListener('keyup',this.keyUp);this.raf=requestAnimationFrame(this.loop)}
+ private start(){if(this.destroyed)return;this.spawnTeams();this.resetKickoff(0);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(this.host);this.resize();window.addEventListener('keydown',this.keyDown);window.addEventListener('keyup',this.keyUp);this.raf=requestAnimationFrame(this.loop)}
  private spawnTeams(){for(const team of[0,1] as const){this.players.push(this.createPlayer(team,0,'GK','GK'));for(let n=1;n<=10;n++){const role=n<=4?'DEF':n<=7?'MID':'ATT';this.players.push(this.createPlayer(team,n,role,`${team?'RED':'BLUE'} ${n}`))}}this.controlled=this.players.find(p=>p.team===0&&p.role==='ATT')!}
  private createPlayer(team:0|1,number:number,role:Player['role'],name:string):Player{const g=new THREE.Group();let mixer:THREE.AnimationMixer|undefined,idle:THREE.AnimationAction|undefined,run:THREE.AnimationAction|undefined;
   if(FootballGame.model){const clone=SkeletonUtils.clone(FootballGame.model.scene) as THREE.Group;clone.scale.setScalar(.82);clone.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;const mats=Array.isArray(o.material)?o.material:[o.material];o.material=mats.map((m:any)=>{const q=m.clone();if(q.color&&/jersey|shirt|cloth/i.test(q.name||m.name||''))q.color.set(team?0xd52e49:0x1977ff);return q})}});g.add(clone);mixer=new THREE.AnimationMixer(clone);const a=FootballGame.model.animations.find(x=>/idle/i.test(x.name));const r=FootballGame.model.animations.find(x=>/run|walk/i.test(x.name));if(a){idle=mixer.clipAction(a);idle.play()}if(r){run=mixer.clipAction(r)}}else{this.fallbackModel(g,team)}
@@ -78,12 +79,13 @@ export class FootballGame{
  private keyDown=(e:KeyboardEvent)=>{const k=e.key.toLowerCase(),map:Record<string,string>={arrowup:'w',arrowdown:'s',arrowleft:'a',arrowright:'d'};if(['w','a','s','d',' ','shift','j','k','l','o','p'].includes(map[k]||k))e.preventDefault();this.keys.add(map[k]||k)};
  private keyUp=(e:KeyboardEvent)=>{const k=e.key.toLowerCase(),map:Record<string,string>={arrowup:'w',arrowdown:'s',arrowleft:'a',arrowright:'d'};this.keys.delete(map[k]||k)};
 
- private loop=(now:number)=>{const dt=Math.min((now-this.last)/1000,.05);this.last=now;this.update(dt);this.render();this.raf=requestAnimationFrame(this.loop)};
+ private loop=(now:number)=>{if(this.destroyed)return;const dt=Math.min((now-this.last)/1000,.05);this.last=now;this.update(dt);this.render();this.raf=requestAnimationFrame(this.loop)};
  private update(dt:number){
   if(this.goalPause>0){this.goalPause-=dt;this.updateCamera(dt);this.emit();return}
-  if(this.kickoffPause>0){this.kickoffPause-=dt;this.updateCamera(dt);this.emit();return}
+  if(this.kickoffPause>0){this.kickoffPause-=dt;if(this.kickoffPause<=0&&this.event==='HALFTIME')this.event='SECOND HALF';this.updateCamera(dt);this.emit();return}
   this.match+=dt*1.8;
-  if(this.match>=45){if(this.half===1){this.half=2;this.match=45;this.event='HALFTIME';this.resetKickoff(1);this.half=2}else{this.match=90;this.event='FULL TIME';this.goalPause=999;this.emit();return}}
+  if(this.match>=90){this.match=90;this.event='FULL TIME';this.goalPause=999;this.emit();return}
+  if(this.match>=45&&this.half===1){this.match=45;this.resetKickoff(1);this.half=2;this.event='HALFTIME';this.kickoffPause=1.2;this.emit();return}
   this.updatePlayer(dt);this.updateAI(dt);this.updateBall(dt);this.checkGoals();this.spawnPowerup(dt);this.collectPowerup();this.updateCamera(dt);this.emit();
  }
 
@@ -113,7 +115,8 @@ export class FootballGame{
  private tackle(){const p=this.controlled;if(p.ball)return;let victim:Player|undefined,bd=3;for(const q of this.players)if(q.team!==p.team){const d=p.pos.distanceTo(q.pos);if(d<bd){bd=d;victim=q}}if(victim){victim.ball=false;this.ball.position.copy(p.pos).add(new THREE.Vector3(p.face.x,0,p.face.z));this.event='TACKLE WIN';p.ball=true}}
 
  private updateBall(dt:number){const owner=this.players.find(p=>p.ball);if(owner)return;this.ball.position.addScaledVector(this.ballVelocity,dt);this.ballVelocity.multiplyScalar(Math.max(0,1-dt*1.7));if(this.ball.position.y>0.72){this.ballVelocity.y-=18*dt;this.ball.position.y=Math.max(.72,this.ball.position.y)}else this.ballVelocity.y=0;if(this.ball.position.z<-FIELD_Z+.7||this.ball.position.z>FIELD_Z-.7){this.ball.position.z=clamp(this.ball.position.z,-FIELD_Z+.7,FIELD_Z-.7);this.ballVelocity.z*=-.65}this.resolvePossession()}
- private checkGoals(){if(this.goalPause>0)return;if(Math.abs(this.ball.position.x)>FIELD_X+.5&&Math.abs(this.ball.position.z)<7.4){const team=this.ball.position.x>0?0:1;this.score[team]++;this.event=team===0?'⚽ BLUE GOAL!':'⚽ RED GOAL!';this.flash.style.opacity='1';setTimeout(()=>{if(this.flash)this.flash.style.opacity='0'},130);this.goalPause=2.2;this.ballVelocity.set(0,0,0);setTimeout(()=>{if(this.goalPause>0&&this.half<3)this.resetKickoff((team?0:1) as 0|1)},900)}}
+ private schedule(callback:()=>void,delay:number){const id=window.setTimeout(()=>{this.timers.delete(id);if(!this.destroyed)callback()},delay);this.timers.add(id);return id}
+ private checkGoals(){if(this.goalPause>0)return;if(Math.abs(this.ball.position.x)>FIELD_X+.5&&Math.abs(this.ball.position.z)<7.4&&this.ball.position.y<4.8){const team=this.ball.position.x>0?0:1;this.score[team]++;this.event=team===0?'⚽ BLUE GOAL!':'⚽ RED GOAL!';this.flash.style.opacity='1';this.schedule(()=>{this.flash.style.opacity='0'},130);this.goalPause=2.2;this.ballVelocity.set(0,0,0);this.schedule(()=>{if(this.goalPause>0&&this.half<3)this.resetKickoff((team?0:1) as 0|1)},900)}}
 
  private spawnPowerup(dt:number){if(this.powerup||Math.floor(this.match)%15!==0||Math.floor((this.match-dt*1.8)/15)===Math.floor(this.match/15))return;const type=Math.random()<.5?'SPEED':'POWER';const mesh=new THREE.Mesh(new THREE.OctahedronGeometry(1.05),new THREE.MeshBasicMaterial({color:type==='SPEED'?0x55eaff:0xffcf33}));mesh.position.set((Math.random()-.5)*70,1,(Math.random()-.5)*45);this.scene.add(mesh);this.powerup={type,pos:mesh.position.clone(),mesh};}
  private collectPowerup(){if(!this.powerup)return;this.powerup.mesh.rotation.y+=.04;const p=this.players.find(x=>x.ball&&x.team===0);if(p&&p.pos.distanceTo(this.powerup.pos)<2.5){this.powerupText=this.powerup.type==='SPEED'?'SPEED BOOST':'SUPER KICK';if(this.powerup.type==='SPEED')p.stamina=100;this.powerup.mesh.removeFromParent();this.powerup=undefined}}
@@ -128,5 +131,5 @@ export class FootballGame{
  private emit(){const m=Math.min(90,Math.floor(this.match));this.listeners.forEach(fn=>fn({score:[...this.score],time:`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`,half:this.half,player:this.controlled?.name||'',stamina:Math.round(this.controlled?.stamina||100),event:this.event,shots:[...this.stats.shots],shotsOn:[...this.stats.shotsOn],passes:[...this.stats.passes],completed:[...this.stats.completed],poss:this.possession(),powerup:this.powerupText}))}
  private possession(){let a=0,b=0;for(const p of this.players){if(p.ball)p.team===0?a++:b++}if(!a&&!b)return[50,50];const total=a+b;return[Math.round(a/total*100),Math.round(b/total*100)]}
  onState(fn:(s:any)=>void){this.listeners.add(fn);fn({score:[...this.score],time:'00:00',half:1,player:this.controlled?.name||'',stamina:100,event:this.event,shots:[0,0],shotsOn:[0,0],passes:[0,0],completed:[0,0],poss:[50,50],powerup:''});return()=>this.listeners.delete(fn)}
- destroy(){cancelAnimationFrame(this.raf);window.removeEventListener('keydown',this.keyDown);window.removeEventListener('keyup',this.keyUp);this.resizeObserver?.disconnect();this.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose()}});this.renderer.dispose();this.listeners.clear()}
+ destroy(){if(this.destroyed)return;this.destroyed=true;cancelAnimationFrame(this.raf);for(const id of this.timers)clearTimeout(id);this.timers.clear();window.removeEventListener('keydown',this.keyDown);window.removeEventListener('keyup',this.keyUp);this.resizeObserver?.disconnect();this.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose()}});this.flash.remove();this.renderer.dispose();this.renderer.domElement.remove();this.listeners.clear()}
 }
