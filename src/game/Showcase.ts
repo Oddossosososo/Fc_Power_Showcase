@@ -9,6 +9,8 @@ export class ShowcaseEngine {
   private particles: THREE.Points;
   private ring: THREE.Mesh;
   private raf = 0;
+  private resizeObserver?: ResizeObserver;
+  private destroyed = false;
   private start = performance.now();
 
   constructor(private host:HTMLElement, private ovr:number, private offset:number) {
@@ -41,7 +43,8 @@ export class ShowcaseEngine {
     this.particles = new THREE.Points(geo,new THREE.PointsMaterial({color:0x8effdf,size:.026,transparent:true,opacity:.8}));
     this.scene.add(this.particles);
     this.resize();
-    new ResizeObserver(()=>this.resize()).observe(host);
+    this.resizeObserver = new ResizeObserver(()=>this.resize());
+    this.resizeObserver.observe(host);
     this.animate();
   }
 
@@ -52,6 +55,7 @@ export class ShowcaseEngine {
   }
 
   private animate=()=>{
+    if(this.destroyed)return;
     const time=(performance.now()-this.start)/1000;
     const p=powerScale(this.ovr);
     const b=ballPosition(time,this.ovr,this.offset);
@@ -68,8 +72,18 @@ export class ShowcaseEngine {
   };
 
   destroy(){
+    if(this.destroyed)return;
+    this.destroyed=true;
     cancelAnimationFrame(this.raf);
+    this.resizeObserver?.disconnect();
+    this.scene.traverse((object)=>{
+      if(object instanceof THREE.Mesh || object instanceof THREE.Points){
+        object.geometry.dispose();
+        const materials=Array.isArray(object.material)?object.material:[object.material];
+        materials.forEach(material=>material.dispose());
+      }
+    });
     this.renderer.dispose();
-    this.host.removeChild(this.renderer.domElement);
+    this.renderer.domElement.remove();
   }
 }
